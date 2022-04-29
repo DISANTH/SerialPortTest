@@ -5,6 +5,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import android.app.PendingIntent;
 import android.content.Context;
+import android.hardware.usb.UsbConfiguration;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
@@ -90,6 +91,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     public void setSerialPort(){
         UsbManager manager = (UsbManager) getSystemService(Context.USB_SERVICE);
         Map<String, UsbDevice> devices = manager.getDeviceList();
@@ -100,13 +102,34 @@ public class MainActivity extends AppCompatActivity {
 
         UsbSerialProber prober = new UsbSerialProber(customTable);
         List<UsbSerialDriver> availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(manager);
-//        if (availableDrivers.isEmpty()) {
-//            Log.e("SerialPort","No drivers found");
-//            return;
-//        }
+        if (availableDrivers.isEmpty()) {
+            Log.e("SerialPort","No drivers found");
+            return;
+        }
 
         // Open a connection to the first available driver.
-        //UsbSerialDriver driver = availableDrivers.get(0);
+
+        for (UsbSerialDriver usbSerialDriver:availableDrivers) {
+            UsbDevice usbDevice = usbSerialDriver.getDevice();
+            List<UsbSerialPort> usbSerialPorts = usbSerialDriver.getPorts();
+            String deviceName = "";
+            try{
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    deviceName  = usbDevice.getProductName();
+                    try {
+                        UsbConfiguration usbConfiguration = usbDevice.getConfiguration(0);
+                    }
+                    catch (Exception e){
+                        e.printStackTrace();
+                    }
+                }
+            }
+            catch (Exception e){
+                e.printStackTrace();
+            }
+            Log.e("[UsbDevice]",String.format("DeviceName :: %s , deviceName :: %s, DeviceId :: %s , VendorId :: %s , ProductId :: %s",
+                    usbDevice.getDeviceName(),deviceName,usbDevice.getDeviceId(),usbDevice.getVendorId(),usbDevice.getProductId()));
+        }
         UsbDevice usbDevice = devices.get("/dev/bus/usb/001/002");
 
         UsbDeviceConnection connection = manager.openDevice(usbDevice);
@@ -122,28 +145,38 @@ public class MainActivity extends AppCompatActivity {
 
         connection.claimInterface(usbDevice.getInterface(0), true);
         connection.bulkTransfer(endpoint, "DATA".getBytes(), 4, 10000);
+        UsbSerialDriver driver = availableDrivers.get(0);
+        UsbSerialPort port = driver.getPorts().get(0); // Most devices have just one port (port 0)
+        try {
+            port.open(connection);
+            port.setParameters(19200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
+            port.write("A1001".getBytes(),10*1000);
+        } catch (IOException e) {
+            e.printStackTrace();
+            Log.e("SerialPort",e.getLocalizedMessage());
+        }
+        finally {
+            try {
+                port.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        /*
+        SerialInputOutputManager.Listener aListener= new SerialInputOutputManager.Listener() {
+            @Override
+            public void onNewData(byte[] data) {
+                Log.e("SerialPort ",data.toString());
+            }
 
-//        UsbSerialPort port = driver.getPorts().get(0); // Most devices have just one port (port 0)
-//        try {
-//            port.open(connection);
-//            port.setParameters(115200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//            Log.e("SerialPort",e.getLocalizedMessage());
-//        }
-//        SerialInputOutputManager.Listener aListener= new SerialInputOutputManager.Listener() {
-//            @Override
-//            public void onNewData(byte[] data) {
-//                Log.e("SerialPort ",data.toString());
-//            }
-//
-//            @Override
-//            public void onRunError(Exception e) {
-//
-//            }
-//        };
-//        SerialInputOutputManager serialInputOutputManager  = new SerialInputOutputManager(port,aListener);
-//        serialInputOutputManager.start();
+            @Override
+            public void onRunError(Exception e) {
+
+            }
+        };
+        SerialInputOutputManager serialInputOutputManager  = new SerialInputOutputManager(port,aListener);
+        serialInputOutputManager.start();
+         */
     }
 
     @Override
